@@ -4413,6 +4413,38 @@ void PrintConfigDef::init_fff_params()
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionBool(true));
 
+    // serverhub (Server Hub #S1790j): the surface weave. A mixed filament prints one physical
+    // filament per layer, so its top, its bottom and a gentle slope's ledges each show ONE of its
+    // filaments. With the weave on, the parts of a layer that are seen from above or below are cut
+    // into stripes about one line wide, shared out among the mix's filaments in its proportions.
+    def = this->add("mixed_filament_surface_weave", coBool);
+    def->label = L("Weave mixed surfaces");
+    def->category = L("Others");
+    def->tooltip = L("Print the visible top, bottom and sloped surfaces of a mixed filament as side-by-side "
+                     "stripes of its filaments, in its proportions, instead of one filament per layer.");
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionBool(false));
+
+    def = this->add("mixed_filament_surface_weave_depth", coInt);
+    def->label = L("Weave depth");
+    def->category = L("Others");
+    def->tooltip = L("How many layers under a top (or over a bottom) are woven. Translucent filament shows "
+                     "the layer below the surface too.");
+    def->min = 1;
+    def->max = 4;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionInt(2));
+
+    def = this->add("mixed_filament_surface_weave_pitch", coFloat);
+    def->label = L("Weave stripe width");
+    def->category = L("Others");
+    def->tooltip = L("The width of one stripe. 0 uses about one line width of the nozzle.");
+    def->sidetext = "mm";
+    def->min = 0.;
+    def->max = 5.;
+    def->mode = comAdvanced;
+    def->set_default_value(new ConfigOptionFloat(0.));
+
     def = this->add("mixed_filament_definitions", coString);
     def->label = L("Mixed filament custom definitions");
     def->tooltip = L("Serialized custom mixed filament rows.\n\n"

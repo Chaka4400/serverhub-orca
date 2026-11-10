@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cmath>
 #include <cstdlib>
 #include <fstream>
@@ -2302,6 +2303,159 @@ static size_t non_empty_mask_count(const std::vector<ExPolygons> &masks_by_extru
         if (!masks.empty())
             ++count;
     return count;
+}
+
+// serverhub (Server Hub #S1790j) — the surface weave.
+//
+// A mixed filament is printed one physical filament per layer, so wherever a layer is SEEN —
+// a top, a bottom, a gentle slope's ledge — it shows one of the mix's filaments, not the mix.
+// The weave cuts those visible parts into stripes about one line wide and shares them out
+// among the mix's filaments in its proportions; the stripes cross on alternate layers. The
+// stripes go to the physical channels, whose painted regions already exist for every filament a
+// mixed state can resolve to (append_mixed_component_extruders), so tool order, walls and the
+// prime tower come from the usual machinery: a woven layer prints every stripe of one filament,
+// changes tool, and fills the gaps with the next.
+static int int_from_full_config(const DynamicPrintConfig &full_cfg, const char *key, int fallback)
+{
+    if (!full_cfg.has(key))
+        return fallback;
+    if (const ConfigOptionInt *opt = full_cfg.option<ConfigOptionInt>(key))
+        return opt->value;
+    if (const ConfigOptionFloat *opt = full_cfg.option<ConfigOptionFloat>(key))
+        return int(std::lround(opt->value));
+    return fallback;
+}
+
+// The order the stripes take the mix's filaments in: an even spread of its own proportions.
+static std::vector<unsigned int> weave_sequence_for_row(const MixedFilament &mf, size_t num_physical)
+{
+    if (!mf.enabled || num_physical == 0)
+        return {};
+    if (!mf.manual_pattern.empty()) {
+        std::vector<unsigned int> seq = decode_manual_pattern_sequence(mf, num_physical);
+        return seq.size() >= 2 ? seq : std::vector<unsigned int>{};
+    }
+    std::vector<unsigned int> ids = decode_gradient_component_ids(mf, num_physical);
+    std::vector<int>          weights;
+    if (ids.size() >= 2) {
+        weights = decode_gradient_component_weights(mf, ids.size());
+        if (weights.empty())
+            weights.assign(ids.size(), 1);
+    } else {
+        if (mf.component_a < 1 || mf.component_a > num_physical || mf.component_b < 1 ||
+            mf.component_b > num_physical || mf.component_a == mf.component_b)
+            return {};
+        const int b = std::clamp(mf.mix_b_percent, 0, 100);
+        if (b == 0 || b == 100)
+            return {};
+        ids     = {mf.component_a, mf.component_b};
+        weights = {100 - b, b};
+    }
+    std::vector<unsigned int> seq = build_weighted_gradient_sequence(ids, weights, 24);
+    for (const unsigned int id : seq)
+        if (id < 1 || id > num_physical)
+            return {};
+    return seq.size() >= 2 ? seq : std::vector<unsigned int>{};
+}
+
+static bool apply_mixed_surface_weave(PrintObject &print_object, std::vector<std::vector<ExPolygons>> &segmentation)
+{
+    const Print *print = print_object.print();
+    if (print == nullptr || segmentation.empty())
+        return false;
+    const PrintConfig        &print_cfg = print->config();
+    const DynamicPrintConfig &full_cfg  = print->full_print_config();
+    if (!bool_from_full_config(full_cfg, "mixed_filament_surface_weave", print_cfg.mixed_filament_surface_weave.value))
+        return false;
+
+    const int depth = std::clamp(
+        int_from_full_config(full_cfg, "mixed_filament_surface_weave_depth", print_cfg.mixed_filament_surface_weave_depth.value), 1, 4);
+    coordf_t pitch_mm = float_from_full_config(full_cfg, "mixed_filament_surface_weave_pitch",
+                                               coordf_t(print_cfg.mixed_filament_surface_weave_pitch.value));
+    if (pitch_mm <= EPSILON) {
+        const double nozzle = print_cfg.nozzle_diameter.values.empty() ? 0.4 : print_cfg.nozzle_diameter.get_at(0);
+        pitch_mm            = coordf_t(nozzle * 1.05);
+    }
+    const coord_t pitch = scaled<coord_t>(pitch_mm);
+    if (pitch <= 0)
+        return false;
+
+    const size_t num_physical = print_cfg.filament_colour.size();
+    const size_t num_layers   = segmentation.size();
+    const size_t num_channels = segmentation.front().size();
+    if (num_physical < 2 || num_channels <= num_physical + 1)
+        return false;
+
+    const MixedFilamentManager             &mixed_mgr = print->mixed_filament_manager();
+    std::vector<std::vector<unsigned int>> sequences(num_channels);
+    bool                                   any_row = false;
+    for (size_t ch = num_physical + 1; ch < num_channels; ++ch) {
+        const MixedFilament *mf = mixed_mgr.mixed_filament_from_id(segmentation_channel_filament_id(ch), num_physical);
+        if (mf != nullptr)
+            sequences[ch] = weave_sequence_for_row(*mf, num_physical);
+        any_row = any_row || !sequences[ch].empty();
+    }
+    if (!any_row)
+        return false;
+
+    // The object's whole area on each layer: every channel together.
+    std::vector<ExPolygons> area(num_layers);
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, num_layers), [&](const tbb::blocked_range<size_t> &range) {
+        for (size_t layer_id = range.begin(); layer_id < range.end(); ++layer_id) {
+            Polygons all;
+            for (const ExPolygons &masks : segmentation[layer_id])
+                append(all, to_polygons(masks));
+            area[layer_id] = union_ex(all);
+        }
+    });
+
+    std::atomic<size_t> woven_layers{0};
+    std::atomic<size_t> woven_masks{0};
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, num_layers), [&](const tbb::blocked_range<size_t> &range) {
+        for (size_t layer_id = range.begin(); layer_id < range.end(); ++layer_id) {
+            if (area[layer_id].empty())
+                continue;
+            // Seen from above: what the next `depth` layers do not all cover; from below, the same downwards.
+            ExPolygons above = layer_id + 1 < num_layers ? area[layer_id + 1] : ExPolygons();
+            for (int k = 2; k <= depth && !above.empty(); ++k)
+                above = layer_id + k < num_layers ? intersection_ex(above, area[layer_id + k]) : ExPolygons();
+            ExPolygons below = layer_id >= 1 ? area[layer_id - 1] : ExPolygons();
+            for (int k = 2; k <= depth && !below.empty(); ++k)
+                below = layer_id >= size_t(k) ? intersection_ex(below, area[layer_id - k]) : ExPolygons();
+            ExPolygons visible = union_ex(diff_ex(area[layer_id], above), diff_ex(area[layer_id], below));
+            // A ledge narrower than a line is printed as walls, and walls already show the mix.
+            visible = opening_ex(visible, float(pitch) * 0.5f);
+            if (visible.empty())
+                continue;
+
+            bool layer_woven = false;
+            for (size_t ch = num_physical + 1; ch < num_channels; ++ch) {
+                if (sequences[ch].empty() || segmentation[layer_id][ch].empty())
+                    continue;
+                ExPolygons seen = intersection_ex(segmentation[layer_id][ch], visible);
+                if (seen.empty())
+                    continue;
+                std::vector<ExPolygons> by_extruder;
+                if (!split_masks_pointillism_stripes(seen, sequences[ch], num_physical, layer_id, pitch, (ch & 1) != 0, by_extruder))
+                    continue;
+                segmentation[layer_id][ch] = diff_ex(segmentation[layer_id][ch], seen);
+                for (size_t e = 0; e < num_physical && e < by_extruder.size(); ++e) {
+                    if (by_extruder[e].empty())
+                        continue;
+                    ExPolygons &target = segmentation[layer_id][e + 1];
+                    append(target, std::move(by_extruder[e]));
+                    target = union_ex(target);
+                }
+                layer_woven = true;
+                ++woven_masks;
+            }
+            if (layer_woven)
+                ++woven_layers;
+        }
+    });
+    BOOST_LOG_TRIVIAL(info) << "serverhub surface weave: " << woven_layers.load() << " layers, " << woven_masks.load()
+                            << " mixed areas woven (depth " << depth << ", stripe " << pitch_mm << " mm)";
+    return woven_masks.load() > 0;
 }
 
 template<typename ThrowOnCancel>
@@ -5267,6 +5421,7 @@ void PrintObject::slice_volumes()
         std::vector<std::vector<ExPolygons>> mm_segmentation = multi_material_segmentation_by_painting(*this, [print]() { print->throw_if_canceled(); });
         apply_mixed_surface_indentation(*this, mm_segmentation);
         apply_mixed_component_surface_offsets(*this, mm_segmentation);
+        apply_mixed_surface_weave(*this, mm_segmentation);   // serverhub #S1790j
         std::vector<std::vector<ExPolygons>> local_z_segmentation =
             local_z_whole_objects_enabled
                 ? local_z_planner_segmentation_with_whole_object_mixed_wall(*this, mm_segmentation)

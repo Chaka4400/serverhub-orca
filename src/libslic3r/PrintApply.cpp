@@ -1256,6 +1256,9 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
     new_full_config.option("mixed_filament_component_bias_enabled", true);
     new_full_config.option("mixed_filament_surface_indentation", true);
     new_full_config.option("mixed_filament_region_collapse", true);
+    new_full_config.option("mixed_filament_surface_weave", true);
+    new_full_config.option("mixed_filament_surface_weave_depth", true);
+    new_full_config.option("mixed_filament_surface_weave_pitch", true);
     new_full_config.option("mixed_filament_definitions", true);
     m_config.option("dithering_z_step_size", true);
     m_config.option("dithering_local_z_mode", true);
@@ -1272,6 +1275,9 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
     m_config.option("mixed_filament_component_bias_enabled", true);
     m_config.option("mixed_filament_surface_indentation", true);
     m_config.option("mixed_filament_region_collapse", true);
+    m_config.option("mixed_filament_surface_weave", true);
+    m_config.option("mixed_filament_surface_weave_depth", true);
+    m_config.option("mixed_filament_surface_weave_pitch", true);
     m_config.option("mixed_filament_definitions", true);
     m_default_object_config.option("dithering_z_step_size", true);
     m_default_object_config.option("dithering_local_z_mode", true);
@@ -1288,6 +1294,9 @@ Print::ApplyStatus Print::apply(const Model &model, DynamicPrintConfig new_full_
     m_default_object_config.option("mixed_filament_component_bias_enabled", true);
     m_default_object_config.option("mixed_filament_surface_indentation", true);
     m_default_object_config.option("mixed_filament_region_collapse", true);
+    m_default_object_config.option("mixed_filament_surface_weave", true);
+    m_default_object_config.option("mixed_filament_surface_weave_depth", true);
+    m_default_object_config.option("mixed_filament_surface_weave_pitch", true);
     m_default_object_config.option("mixed_filament_definitions", true);
     // BBS
     int used_filaments = this->extruders(true).size();
