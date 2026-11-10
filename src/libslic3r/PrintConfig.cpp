@@ -2912,6 +2912,46 @@ void PrintConfigDef::init_fff_params()
     def->mode = comAdvanced;
     def->set_default_value(new ConfigOptionInts{ -1 });
     
+    // Server Hub #S1842 — per-filament ironing overrides (upstream OrcaSlicer PR #11194)
+    def = this->add("filament_ironing_flow", coPercents);
+    def->label = L("Ironing flow");
+    def->tooltip = L("Filament-specific override for ironing flow.");
+    def->sidetext = "%";
+    def->min = 0;
+    def->max = 100;
+    def->mode = comAdvanced;
+    def->nullable = true;
+    def->set_default_value(new ConfigOptionPercentsNullable{ ConfigOptionPercentsNullable::nil_value() });
+
+    def = this->add("filament_ironing_spacing", coFloats);
+    def->label = L("Ironing line spacing");
+    def->tooltip = L("Filament-specific override for ironing line spacing.");
+    def->sidetext = "mm";
+    def->min = 0;
+    def->max = 1;
+    def->mode = comAdvanced;
+    def->nullable = true;
+    def->set_default_value(new ConfigOptionFloatsNullable{ ConfigOptionFloatsNullable::nil_value() });
+
+    def = this->add("filament_ironing_inset", coFloats);
+    def->label = L("Ironing inset");
+    def->tooltip = L("Filament-specific override for ironing inset.");
+    def->sidetext = "mm";
+    def->min = 0;
+    def->max = 100;
+    def->mode = comAdvanced;
+    def->nullable = true;
+    def->set_default_value(new ConfigOptionFloatsNullable{ ConfigOptionFloatsNullable::nil_value() });
+
+    def = this->add("filament_ironing_speed", coFloats);
+    def->label = L("Ironing speed");
+    def->tooltip = L("Filament-specific override for ironing speed.");
+    def->sidetext = "mm/s";
+    def->min = 1;
+    def->mode = comAdvanced;
+    def->nullable = true;
+    def->set_default_value(new ConfigOptionFloatsNullable{ ConfigOptionFloatsNullable::nil_value() });
+
     def = this->add("ironing_fan_speed", coInts);
     def->label = L("Ironing fan speed");
     def->tooltip = L("This part cooling fan speed is applied when ironing. Setting this parameter to a lower than regular speed "

@@ -1543,10 +1543,15 @@ void Layer::make_ironing()
 			if (ironing_params.extruder != -1) {
 				//TODO just_infill is currently not used.
 				ironing_params.just_infill 	= false;
-				ironing_params.line_spacing = config.ironing_spacing;
-                ironing_params.inset 		= config.ironing_inset;
-				ironing_params.height 		= default_layer_height * 0.01 * config.ironing_flow;
-				ironing_params.speed 		= config.ironing_speed.values.front();
+				// Server Hub #S1842 — the filament's own ironing where it has one (upstream OrcaSlicer
+				// PR #11194), else the process's. A mixed (virtual) filament's number is past the
+				// physical heads' entries: it keeps the process's.
+				const size_t fi = size_t(ironing_params.extruder - 1);
+				auto own = [fi](const auto &opt) { return fi < opt.values.size() && !opt.is_nil(fi); };
+				ironing_params.line_spacing = own(config.filament_ironing_spacing) ? config.filament_ironing_spacing.get_at(fi) : config.ironing_spacing.value;
+                ironing_params.inset 		= own(config.filament_ironing_inset) ? config.filament_ironing_inset.get_at(fi) : config.ironing_inset.value;
+				ironing_params.height 		= default_layer_height * 0.01 * (own(config.filament_ironing_flow) ? config.filament_ironing_flow.get_at(fi) : config.ironing_flow.value);
+				ironing_params.speed 		= own(config.filament_ironing_speed) ? config.filament_ironing_speed.get_at(fi) : config.ironing_speed.values.front();
                 ironing_params.angle        = (config.ironing_angle >= 0 ? config.ironing_angle : config.infill_direction) * M_PI / 180.;
 				ironing_params.pattern      = config.ironing_pattern;
 				ironing_params.layerm 		= layerm;

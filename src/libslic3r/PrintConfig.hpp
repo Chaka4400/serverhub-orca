@@ -1087,6 +1087,11 @@ PRINT_CONFIG_CLASS_DEFINE(
     ((ConfigOptionFloat, ironing_direction))
     ((ConfigOptionFloats, ironing_speed))
     ((ConfigOptionFloat, ironing_angle))
+    // Server Hub #S1842 — per-filament ironing overrides (upstream OrcaSlicer PR #11194); nil = the process's
+    ((ConfigOptionPercentsNullable, filament_ironing_flow))
+    ((ConfigOptionFloatsNullable, filament_ironing_spacing))
+    ((ConfigOptionFloatsNullable, filament_ironing_inset))
+    ((ConfigOptionFloatsNullable, filament_ironing_speed))
     // Detect bridging perimeters
     ((ConfigOptionBool, detect_overhang_wall))
     ((ConfigOptionInt, wall_filament))
