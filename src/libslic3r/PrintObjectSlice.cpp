@@ -2373,8 +2373,12 @@ static bool apply_mixed_surface_weave(PrintObject &print_object, std::vector<std
     coordf_t pitch_mm = float_from_full_config(full_cfg, "mixed_filament_surface_weave_pitch",
                                                coordf_t(print_cfg.mixed_filament_surface_weave_pitch.value));
     if (pitch_mm <= EPSILON) {
+        // Two lines wide. A stripe one line wide has no room for a wall once its edges are
+        // offset, so it prints nothing — a woven first layer came out empty and the slice was
+        // refused ("empty initial layer"). Proven on the box: two lines slice, and each layer
+        // carries both filaments with no extra tool changes.
         const double nozzle = print_cfg.nozzle_diameter.values.empty() ? 0.4 : print_cfg.nozzle_diameter.get_at(0);
-        pitch_mm            = coordf_t(nozzle * 1.05);
+        pitch_mm            = coordf_t(nozzle * 2.1);
     }
     const coord_t pitch = scaled<coord_t>(pitch_mm);
     if (pitch <= 0)

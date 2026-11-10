@@ -4438,7 +4438,8 @@ void PrintConfigDef::init_fff_params()
     def = this->add("mixed_filament_surface_weave_pitch", coFloat);
     def->label = L("Weave stripe width");
     def->category = L("Others");
-    def->tooltip = L("The width of one stripe. 0 uses about one line width of the nozzle.");
+    def->tooltip = L("The width of one stripe. 0 uses two line widths of the nozzle (a stripe one line wide "
+                     "has no room for a wall and prints nothing).");
     def->sidetext = "mm";
     def->min = 0.;
     def->max = 5.;
